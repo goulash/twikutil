@@ -1,0 +1,145 @@
+// Copyright (c) 2015, Ben Morgan. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
+package twikutil
+
+import (
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+
+	"gopkg.in/twik.v1"
+	"gopkg.in/twik.v1/ast"
+)
+
+var ErrFuncExists = errors.New("cannot set variable with name of existing function")
+
+type LoaderFunc func(*ast.FileSet, *twik.Scope) FuncMap
+
+type Executer struct {
+	fset  *ast.FileSet
+	scope *twik.Scope
+	funcs map[string]bool
+}
+
+func New(loader LoaderFunc) *Executer {
+	fset := twik.NewFileSet()
+	s := twik.NewScope(fset)
+	fns := loader(fset, s)
+	keys := make(map[string]bool)
+	for k := range fns {
+		keys[k] = true
+	}
+	fns.Export(s)
+	return &Executer{
+		fset:  fset,
+		scope: s,
+		funcs: keys,
+	}
+}
+
+func (e *Executer) Scope() *twik.Scope { return e.scope }
+
+// It is an error to use a key that has already been used as a function.
+func (e *Executer) Set(key string, value interface{}) error {
+	if e.funcs[key] {
+		return errors.New("function with that name already exists")
+	}
+	_, err := e.scope.Get(key)
+	if err == nil {
+		return e.scope.Set(key, value)
+	}
+	return e.scope.Create(key, value)
+}
+
+// It is an error to get a key that has already been used as a function.
+func (e *Executer) Get(key string) (interface{}, error) {
+	if e.funcs[key] {
+		return nil, errors.New("functions cannot be gotten")
+	}
+	return e.scope.Get(key)
+}
+
+func (e *Executer) Has(key string) bool {
+	if e.funcs[key] {
+		return false
+	}
+	v, err := e.scope.Get(key)
+	return err == nil && v != nil
+}
+
+func (e *Executer) Create(key string, fn interface{}) error {
+	err := e.scope.Create(key, Func(key, fn))
+	if err != nil {
+		return err
+	}
+	e.funcs[key] = true
+	return nil
+}
+
+func (e *Executer) Override(key string, fn interface{}) error {
+	if !e.funcs[key] {
+		return errors.New("no function by that name exists")
+	}
+	return e.scope.Set(key, Func(key, fn))
+}
+
+func (e *Executer) Exec(file string) (s *twik.Scope, err error) {
+	// In order to handle symlinks and includes, we jump to the folder
+	// where the file is, so that includes are relative from each file.
+	file, back, err := jump(file)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Chdir(back)
+
+	bs, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	node, err := twik.Parse(e.fset, file, bs)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			s = nil
+			err = fmt.Errorf("panic in file %s: %v", file, r)
+		}
+	}()
+	_, err = e.scope.Eval(node)
+	return e.scope, err
+}
+
+func jump(file string) (newpath, back string, err error) {
+	file, err = realPath(file)
+	if err != nil {
+		return "", "", err
+	}
+	dir := filepath.Dir(file)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", "", err
+	}
+	os.Chdir(dir)
+	return filepath.Base(file), cwd, nil
+}
+
+func realPath(path string) (string, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return "", err
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		return path, nil
+	}
+	lpath, err := os.Readlink(path)
+	if err != nil {
+		return "", err
+	}
+	return lpath, nil
+}
