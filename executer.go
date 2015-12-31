@@ -110,8 +110,7 @@ func (e *Executer) ExecString(name, code string) (s *twik.Scope, err error) {
 		}
 
 		defer func() {
-			e, ok := err.(*twik.Error)
-			if ok {
+			if e, ok := err.(*twik.Error); ok {
 				epi := e.PosInfo
 				pi := root.OffsetLC(epi.Line, epi.Column)
 				epi.Name = pi.Name
