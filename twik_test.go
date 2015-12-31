@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cassava/dromi/lisp/twikutil"
+	"github.com/goulash/twikutil"
 )
 
 type formatTest struct {

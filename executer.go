@@ -8,6 +8,9 @@ import (
 	"errors"
 	"io/ioutil"
 
+	"github.com/goulash/pre"
+	past "github.com/goulash/pre/ast"
+
 	"gopkg.in/twik.v1"
 	"gopkg.in/twik.v1/ast"
 )
@@ -17,7 +20,7 @@ var ErrFuncExists = errors.New("cannot set variable with name of existing functi
 type LoaderFunc func(*twik.Scope) FuncMap
 
 type Executer struct {
-	PreExecString func(name, code string) (string, error)
+	PreProcessor *pre.Processor
 
 	fset  *ast.FileSet
 	scope *twik.Scope
@@ -95,11 +98,28 @@ func (e *Executer) Exec(file string) (s *twik.Scope, err error) {
 }
 
 func (e *Executer) ExecString(name, code string) (s *twik.Scope, err error) {
-	if e.PreExecString != nil {
-		code, err = e.PreExecString(name, code)
+	// When the preprocessor is active, we need to convert any error messages
+	// we get from twik so that they correspond to the correct file name, line
+	// and column. This we do in the deferred function.
+	var root past.Node
+	if e.PreProcessor != nil {
+		root, err = e.PreProcessor.ParseString(name, code)
+		code = root.String()
 		if err != nil {
 			return nil, err
 		}
+
+		defer func() {
+			e, ok := err.(*twik.Error)
+			if ok {
+				epi := e.PosInfo
+				pi := root.OffsetLC(epi.Line, epi.Column)
+				epi.Name = pi.Name
+				epi.Line = pi.Line
+				epi.Column = pi.Column
+				err = e
+			}
+		}()
 	}
 
 	node, err := twik.ParseString(e.fset, name, code)
