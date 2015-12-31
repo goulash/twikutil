@@ -17,6 +17,8 @@ var ErrFuncExists = errors.New("cannot set variable with name of existing functi
 type LoaderFunc func(*twik.Scope) FuncMap
 
 type Executer struct {
+	PreExecString func(name, code string) (string, error)
+
 	fset  *ast.FileSet
 	scope *twik.Scope
 	funcs map[string]bool
@@ -93,6 +95,13 @@ func (e *Executer) Exec(file string) (s *twik.Scope, err error) {
 }
 
 func (e *Executer) ExecString(name, code string) (s *twik.Scope, err error) {
+	if e.PreExecString != nil {
+		code, err = e.PreExecString(name, code)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	node, err := twik.ParseString(e.fset, name, code)
 	if err != nil {
 		return nil, err
