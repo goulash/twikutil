@@ -6,10 +6,7 @@ package twikutil
 
 import (
 	"errors"
-	"fmt"
 	"io/ioutil"
-	"os"
-	"path/filepath"
 
 	"gopkg.in/twik.v1"
 	"gopkg.in/twik.v1/ast"
@@ -17,7 +14,7 @@ import (
 
 var ErrFuncExists = errors.New("cannot set variable with name of existing function")
 
-type LoaderFunc func(*ast.FileSet, *twik.Scope) FuncMap
+type LoaderFunc func(*twik.Scope) FuncMap
 
 type Executer struct {
 	fset  *ast.FileSet
@@ -28,7 +25,7 @@ type Executer struct {
 func New(loader LoaderFunc) *Executer {
 	fset := twik.NewFileSet()
 	s := twik.NewScope(fset)
-	fns := loader(fset, s)
+	fns := loader(s)
 	keys := make(map[string]bool)
 	for k := range fns {
 		keys[k] = true
@@ -88,58 +85,18 @@ func (e *Executer) Override(key string, fn interface{}) error {
 }
 
 func (e *Executer) Exec(file string) (s *twik.Scope, err error) {
-	// In order to handle symlinks and includes, we jump to the folder
-	// where the file is, so that includes are relative from each file.
-	file, back, err := jump(file)
-	if err != nil {
-		return nil, err
-	}
-	defer os.Chdir(back)
-
 	bs, err := ioutil.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
-	node, err := twik.Parse(e.fset, file, bs)
+	return e.ExecString(file, string(bs))
+}
+
+func (e *Executer) ExecString(name, code string) (s *twik.Scope, err error) {
+	node, err := twik.ParseString(e.fset, name, code)
 	if err != nil {
 		return nil, err
 	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			s = nil
-			err = fmt.Errorf("panic in file %s: %v", file, r)
-		}
-	}()
 	_, err = e.scope.Eval(node)
 	return e.scope, err
-}
-
-func jump(file string) (newpath, back string, err error) {
-	file, err = realPath(file)
-	if err != nil {
-		return "", "", err
-	}
-	dir := filepath.Dir(file)
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", "", err
-	}
-	os.Chdir(dir)
-	return filepath.Base(file), cwd, nil
-}
-
-func realPath(path string) (string, error) {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return "", err
-	}
-	if fi.Mode()&os.ModeSymlink == 0 {
-		return path, nil
-	}
-	lpath, err := os.Readlink(path)
-	if err != nil {
-		return "", err
-	}
-	return lpath, nil
 }
