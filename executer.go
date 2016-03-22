@@ -7,6 +7,8 @@ package twikutil
 import (
 	"errors"
 	"io/ioutil"
+	"strconv"
+	"strings"
 
 	"github.com/goulash/pre"
 	past "github.com/goulash/pre/ast"
@@ -110,14 +112,7 @@ func (e *Executer) ExecString(name, code string) (s *twik.Scope, err error) {
 		}
 
 		defer func() {
-			if e, ok := err.(*twik.Error); ok {
-				epi := e.PosInfo
-				pi := root.OffsetLC(epi.Line, epi.Column)
-				epi.Name = pi.Name
-				epi.Line = pi.Line
-				epi.Column = pi.Column
-				err = e
-			}
+			err = replaceError(name, root, err)
 		}()
 	}
 
@@ -127,4 +122,50 @@ func (e *Executer) ExecString(name, code string) (s *twik.Scope, err error) {
 	}
 	_, err = e.scope.Eval(node)
 	return e.scope, err
+}
+
+func replaceError(name string, root past.Node, err error) error {
+	if e, ok := err.(*twik.Error); ok {
+		epi := e.PosInfo
+		pi := root.OffsetLC(epi.Line, epi.Column)
+		epi.Name = pi.Name
+		epi.Line = pi.Line
+		epi.Column = pi.Column
+		return e
+	}
+
+	// Some parse errors aren't returned as *twik.Error,
+	// so we have to figure it out ourselves. They tend
+	// to all have the format:
+	//
+	//     name:line:col: error msg
+	//
+	// So we can work with that. If anywhere along the
+	// way we run into an error, we just return the
+	// original error.
+	s := err.Error()
+	if !strings.HasPrefix(s, name) {
+		return err
+	}
+	s = strings.TrimPrefix(s, name)
+	xs := strings.Split(s, ":")
+	if len(xs) < 4 {
+		return err
+	}
+	if xs[0] != "" {
+		return err
+	}
+	line, e := strconv.ParseInt(xs[1], 0, 0)
+	if e != nil {
+		return err
+	}
+	col, e := strconv.ParseInt(xs[2], 0, 0)
+	if e != nil {
+		return err
+	}
+	pi := root.OffsetLC(int(line), int(col))
+	xs[0] = pi.Name
+	xs[1] = strconv.FormatInt(int64(pi.Line), 10)
+	xs[2] = strconv.FormatInt(int64(pi.Column), 10)
+	return errors.New(strings.Join(xs, ":"))
 }
