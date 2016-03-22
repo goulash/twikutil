@@ -112,7 +112,9 @@ func (e *Executer) ExecString(name, code string) (s *twik.Scope, err error) {
 		}
 
 		defer func() {
-			err = replaceError(name, root, err)
+			if err != nil {
+				err = replaceError(name, root, err)
+			}
 		}()
 	}
 
