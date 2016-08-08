@@ -168,8 +168,14 @@ func replaceError(name string, root past.Node, err error) error {
 		return err
 	}
 	pi := root.OffsetLC(int(line), int(col))
-	xs[0] = pi.Name
-	xs[1] = strconv.FormatInt(int64(pi.Line), 10)
-	xs[2] = strconv.FormatInt(int64(pi.Column), 10)
+	if pi != nil {
+		xs[0] = pi.Name
+		xs[1] = strconv.FormatInt(int64(pi.Line), 10)
+		xs[2] = strconv.FormatInt(int64(pi.Column), 10)
+	} else {
+		xs[0] = name
+		xs[1] = strconv.FormatInt(line, 10)
+		xs[2] = strconv.FormatInt(col, 10)
+	}
 	return errors.New(strings.Join(xs, ":"))
 }
