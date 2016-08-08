@@ -130,9 +130,11 @@ func replaceError(name string, root past.Node, err error) error {
 	if e, ok := err.(*twik.Error); ok {
 		epi := e.PosInfo
 		pi := root.OffsetLC(epi.Line, epi.Column)
-		epi.Name = pi.Name
-		epi.Line = pi.Line
-		epi.Column = pi.Column
+		if pi != nil {
+			epi.Name = pi.Name
+			epi.Line = pi.Line
+			epi.Column = pi.Column
+		}
 		return e
 	}
 
