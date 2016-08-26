@@ -141,6 +141,10 @@ func (km KeyMap) Apply(e *twikutil.Executer) error {
 	return km.Keys().Apply(e)
 }
 
+func (km KeyMap) ApplyOrNil(e *twikutil.Executer) error {
+	return km.Keys().ApplyOrNil(e)
+}
+
 func (km KeyMap) Clobber(e *twikutil.Executer) error {
 	return km.Keys().Clobber(e)
 }
