@@ -175,6 +175,18 @@ func (ks Keys) Apply(e *twikutil.Executer) error {
 	return nil
 }
 
+// ApplyOrNil applies all keys, and keys that are read-only are
+// still set to nil.
+func (ks Keys) ApplyOrNil(e *twikutil.Executer) error {
+	for _, k := range ks {
+		err := k.ApplyOrNil(e)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (ks Keys) Clobber(e *twikutil.Executer) error {
 	for _, k := range ks {
 		err := k.Clobber(e)
@@ -280,7 +292,16 @@ func (k *Key) Apply(e *twikutil.Executer) error {
 	if k.mode&Write == 0 {
 		return nil
 	}
+	if !e.Has(k.name) {
+		return e.Set(k.name, k.val)
+	}
+	return nil
+}
 
+func (k *Key) ApplyOrNil(e *twikutil.Executer) error {
+	if k.mode&Write == 0 {
+		return e.Set(k.name, nil)
+	}
 	if !e.Has(k.name) {
 		return e.Set(k.name, k.val)
 	}
